@@ -253,6 +253,7 @@ for addr in transformed:
 
 The only thing that's left to do is return to `print_file`, and pass the address of our sweet, sweet, `b'flag.txt'` string as an argument.
 
+## Complete script
 Putting it all together, here is the complete exploit script:
 
 ```python
