@@ -246,7 +246,7 @@ def patch_byte(addr):
 ```
 
 Since we kept track of the addresses that need to be patched earlier, calling the `patch_byte` function is as simple as:
-```
+```python
 for addr in transformed:
     payload += patch_byte(addr)
 ```
