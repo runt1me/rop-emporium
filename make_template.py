@@ -16,7 +16,7 @@ def main():
     output_file = os.path.join(dir_of_binary, "analysis.txt")
 
     shell_commands = [
-        f'checksec --file={path_to_binary}',
+        f'checksec --file={path_to_binary} --output=json',
         f'ROPgadget --binary {path_to_binary}',
         f'gdb -q -batch -ex "info functions" {path_to_binary}',
     ]
