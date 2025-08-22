@@ -130,10 +130,6 @@ def main(launch_gdb=True):
 
     read_until(p, b'> ')
 
-    # return to foothold_function to resolve it;
-    #     21: 00002000     0 SECTION LOCAL  DEFAULT   21 .got.plt
-    #     22: 00002020     0 SECTION LOCAL  DEFAULT   22 .data
-
     # from objdump -R pivot32 ; here is the GOT address of foothold_function
     # prior to being called; it will point to the plt stub, after being called,
     # it should have the runtime address of foothold_function
