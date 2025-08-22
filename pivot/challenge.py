@@ -184,5 +184,7 @@ def main(launch_gdb=True):
     read_until(p, b'never happens')
 
 if __name__ == "__main__":
-    main()
-    #main(launch_gdb=False)
+    if len(sys.argv) > 1 and sys.argv[1] == "gdb":
+        main(launch_gdb=True)
+    else:
+        main(launch_gdb=False)
