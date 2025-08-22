@@ -2,11 +2,19 @@
 catch load
 
 # Run until the .so is loaded
-run < <(python challenge.py)
-break *pwnme+273
+break *pwnme+198
+break foothold_function
 
-# Break on my patch byte gadget
-# break *0x080485b8
+# Gadget breakpoints
+
+# read gadget
+break *0x08048830
+
+# add gadget
+break *0x8048833
+
+# stack pivot gadget
+break *0x0804882e
 
 # other commands
 # info proc mappings
